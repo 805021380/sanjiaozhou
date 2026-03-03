@@ -58,79 +58,34 @@
 <body>
     <div class="container">
         <h1>随机数同步（腾讯云版）</h1>
-        <!-- 房主专属按钮（带host=1参数才显示） -->
+        <!-- 房主专属按钮 -->
         <div id="host-buttons" style="display: none;">
             <button class="btn generate-btn" onclick="generateRandomNumber()">生成随机数</button>
             <button class="btn reset-btn" onclick="resetRandomNumber()">重置</button>
         </div>
-        <!-- 随机数展示区域 -->
         <div class="random-num" id="random-number">--</div>
         <div class="status">当前状态：<span id="status">等待同步...</span></div>
     </div>
     <div class="toast" id="toast"></div>
 
-    <!-- 依赖：CryptoJS（生成腾讯云签名） -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+    <!-- 引入腾讯云开发前端SDK（核心，无需密钥） -->
+    <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+    <script src="https://imgcache.qq.com/qcloud/tcbjs/1.26.0/tcb.js"></script>
     <script>
-        const secretId = process.env.TENCENT_SECRET_ID; // 开发环境读取本地.env
-        const secretKey = process.env.TENCENT_SECRET_KEY;
-        // ===================== 腾讯云配置（替换成你的！）=====================
-        const tencentCloudConfig = {
-            secretId: secretId, // 腾讯云控制台获取
-            secretKey: secretKey, // 腾讯云控制台获取
-            envId: "sanjiaozhou-env-4g10z4vy00b2121e", // 你的环境ID
-            region: "ap-shanghai", // 地域
-            collectionName: "random_number" // 存储随机数的集合名
+        // ===================== 云开发配置（仅需环境ID，无密钥！）=====================
+        const tcbConfig = {
+            env: "sanjiaozhou-env-4g10z4vy00b2121e", // 替换为你的环境ID
+            region: "ap-shanghai" // 替换为你的环境地域
         };
 
-        // ===================== 腾讯云API签名（无需修改）=====================
-        function getSignature(params) {
-            const timestamp = Math.floor(Date.now() / 1000);
-            const nonce = Math.random().toString(36).substr(2, 10);
+        // 初始化云开发
+        const app = tcb.init(tcbConfig);
+        // 获取数据库引用
+        const db = app.database();
+        // 引用random_number集合
+        const randomNumCollection = db.collection('random_number');
 
-            // 拼接签名字符串
-            const signStr = `GETcbs.tcb-api.tencentcloudapi.com/v2/index.php${timestamp}${nonce}${JSON.stringify(params)}`;
-            const hmac = CryptoJS.HmacSHA1(signStr, tencentCloudConfig.secretKey);
-            const signature = CryptoJS.enc.Base64.stringify(hmac);
-
-            return { timestamp, nonce, signature };
-        }
-
-        // 调用腾讯云文档型数据库API
-        async function callTencentCloudApi(action, data = {}) {
-            const params = {
-                Action: action,
-                envName: tencentCloudConfig.envId,
-                ...data
-            };
-
-            const { timestamp, nonce, signature } = getSignature(params);
-
-            try {
-                const response = await fetch(`https://cbs.tcb-api.tencentcloudapi.com/v2/index.php`, {
-                    method: "GET",
-                    headers: {
-                        "X-TC-Timestamp": timestamp,
-                        "X-TC-Nonce": nonce,
-                        "X-TC-Signature": signature,
-                        "X-TC-SecretId": tencentCloudConfig.secretId,
-                        "Content-Type": "application/json"
-                    }
-                });
-
-                const result = await response.json();
-                if (result.code !== 0) {
-                    throw new Error(result.message || "腾讯云API调用失败");
-                }
-                return result.data;
-            } catch (error) {
-                console.error("API调用失败：", error);
-                throw error;
-            }
-        }
-
-        // ===================== 核心功能函数 =====================
-        // 显示提示框
+        // ===================== 工具函数 =====================
         function showToast(msg) {
             const toast = document.getElementById("toast");
             toast.textContent = msg;
@@ -140,38 +95,29 @@
             }, 2000);
         }
 
-        // 房主：生成随机数并写入腾讯云
+        // ===================== 核心功能 =====================
+        // 房主：生成随机数
         async function generateRandomNumber() {
             try {
-                // 生成1-100的随机数（可自定义范围）
+                // 生成1-100随机数
                 const randomNum = Math.floor(Math.random() * 100) + 1;
 
-                // 1. 清空集合旧数据
-                const oldData = await callTencentCloudApi("database.collection.query", {
-                    collectionName: tencentCloudConfig.collectionName,
-                    query: "{}"
-                });
-
-                if (oldData.data && oldData.data.length > 0) {
-                    for (const doc of oldData.data) {
-                        await callTencentCloudApi("database.collection.delete", {
-                            collectionName: tencentCloudConfig.collectionName,
-                            query: JSON.stringify({ _id: doc._id })
-                        });
+                // 1. 清空旧数据
+                const oldDataRes = await randomNumCollection.get();
+                if (oldDataRes.data.length > 0) {
+                    for (const doc of oldDataRes.data) {
+                        await randomNumCollection.doc(doc._id).remove();
                     }
                 }
 
                 // 2. 写入新随机数
-                await callTencentCloudApi("database.collection.add", {
-                    collectionName: tencentCloudConfig.collectionName,
-                    data: JSON.stringify({
-                        number: randomNum,
-                        updateTime: new Date().toLocaleString(),
-                        type: "generate"
-                    })
+                await randomNumCollection.add({
+                    number: randomNum,
+                    updateTime: new Date().toLocaleString(),
+                    type: "generate"
                 });
 
-                // 3. 更新本地显示
+                // 更新前端显示
                 document.getElementById("random-number").textContent = randomNum;
                 showToast(`生成成功：${randomNum}`);
                 document.getElementById("status").textContent = "已同步最新随机数";
@@ -184,19 +130,19 @@
         // 房主：重置随机数
         async function resetRandomNumber() {
             try {
-                // 清空数据并写入重置标记
-                await callTencentCloudApi("database.collection.delete", {
-                    collectionName: tencentCloudConfig.collectionName,
-                    query: "{}"
-                });
+                // 清空所有数据
+                const oldDataRes = await randomNumCollection.get();
+                if (oldDataRes.data.length > 0) {
+                    for (const doc of oldDataRes.data) {
+                        await randomNumCollection.doc(doc._id).remove();
+                    }
+                }
 
-                await callTencentCloudApi("database.collection.add", {
-                    collectionName: tencentCloudConfig.collectionName,
-                    data: JSON.stringify({
-                        number: "--",
-                        updateTime: new Date().toLocaleString(),
-                        type: "reset"
-                    })
+                // 写入重置标记
+                await randomNumCollection.add({
+                    number: "--",
+                    updateTime: new Date().toLocaleString(),
+                    type: "reset"
                 });
 
                 document.getElementById("random-number").textContent = "--";
@@ -208,18 +154,13 @@
             }
         }
 
-        // 成员/房主：轮询获取最新随机数（每2秒一次）
+        // 轮询获取最新随机数
         async function pollLatestNumber() {
             try {
-                const result = await callTencentCloudApi("database.collection.query", {
-                    collectionName: tencentCloudConfig.collectionName,
-                    query: "{}",
-                    orderBy: "updateTime desc",
-                    limit: 1
-                });
-
-                if (result.data && result.data.length > 0) {
-                    const latestData = result.data[0];
+                // 查询最新一条数据（按时间倒序）
+                const res = await randomNumCollection.orderBy('updateTime', 'desc').limit(1).get();
+                if (res.data.length > 0) {
+                    const latestData = res.data[0];
                     document.getElementById("random-number").textContent = latestData.number;
                     document.getElementById("status").textContent = `最后更新：${latestData.updateTime}`;
                 }
@@ -230,24 +171,20 @@
 
         // ===================== 页面初始化 =====================
         window.onload = async function() {
-            // 1. 检查是否是房主（URL带?host=1）
+            // 1. 匿名登录（必须！SDK需要身份标识）
+            try {
+                await app.auth().anonymousAuthProvider().signIn();
+                showToast("初始化成功");
+            } catch (error) {
+                showToast(`初始化失败：${error.message}`);
+                console.error("登录失败：", error);
+            }
+
+            // 2. 检查房主权限（URL带?host=1显示按钮）
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get("host") === "1") {
                 document.getElementById("host-buttons").style.display = "block";
                 document.getElementById("status").textContent = "你是房主，可生成随机数";
-            }
-
-            // 2. 初始化集合（如果不存在则创建）
-            try {
-                await callTencentCloudApi("database.collection.create", {
-                    collectionName: tencentCloudConfig.collectionName
-                });
-            } catch (error) {
-                // 集合已存在时会报错，忽略即可
-                if (!error.message.includes("collection already exists")) {
-                    console.error("初始化集合失败：", error);
-                    showToast("初始化失败，请检查配置");
-                }
             }
 
             // 3. 启动轮询
