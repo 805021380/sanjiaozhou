@@ -4,9 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>三角洲行动 - 随机配装生成器（多人同步版）</title>
-<!-- 引入微信云开发SDK -->
+<!-- 引入微信云开发WEB版SDK（注意：不是小程序版！） -->
 <script src="https://res.wx.qq.com/open/js/cloudbase/1.1.0/cloud.js"></script>
-<script src="app.js?v=1.0.1"></script>
 <style>
 *{
     margin:0;
@@ -714,22 +713,48 @@ button {
 // ===================== 微信云开发配置（替换成你的！） =====================
 const cloudConfig = {
     env: "sanjiaozhou-env-4g10z4vy00b2121e", // 替换为微信云开发的环境ID
-    region: "ap-shanghai", // 替换为你的环境地域（如 ap-beijing、ap-guangzhou）
-    appid: "wxddfbd6045eaa9447"  // 加上这一行！！！
+    appid: "wxddfbd6045eaa9447",  // 你的小程序APPID
+    region: "ap-shanghai" // 你的环境地域（如 ap-beijing、ap-guangzhou）
 };
 
-// 初始化微信云开发
+// 初始化微信云开发（WEB端专用）
 let db = null;
 let randomDataRef = null;
-try {
-    const cloud = window.cloud;
-    cloud.init(cloudConfig);
-    db = cloud.database();
-    randomDataRef = db.collection('delta_random'); // 存储配装数据的集合
-    console.log("微信云开发初始化成功");
-} catch (error) {
-    showToast(`云开发初始化失败：${error.message}`);
-    console.error("云开发初始化失败：", error);
+let cloudInstance = null;
+
+// 初始化云开发（WEB端）
+async function initCloud() {
+    try {
+        // 1. 创建云实例（WEB端必须用这种方式）
+        cloudInstance = window.cloud;
+        if (!cloudInstance) {
+            throw new Error("云开发SDK加载失败");
+        }
+
+        // 2. 初始化云开发（WEB端配置）
+        cloudInstance.init({
+            env: cloudConfig.env,
+            appid: cloudConfig.appid,
+            region: cloudConfig.region,
+            // WEB端必须开启匿名登录
+            authDomain: `${cloudConfig.env}.service.tcloudbase.com`
+        });
+
+        // 3. 匿名登录（WEB端操作数据库必须先登录）
+        await cloudInstance.auth().anonymousAuthProvider().signIn();
+        console.log("匿名登录成功");
+
+        // 4. 获取数据库实例
+        db = cloudInstance.database();
+        randomDataRef = db.collection('delta_random'); // 存储配装数据的集合
+        console.log("微信云开发初始化成功（WEB端）");
+        showToast("云开发初始化成功！");
+    } catch (error) {
+        showToast(`云开发初始化失败：${error.message}，将使用本地模式`);
+        console.error("云开发初始化失败：", error);
+        // 降级处理：禁用云同步，仅本地运行
+        randomDataRef = null;
+    }
 }
 
 // ===================== 全局变量 =====================
@@ -1020,7 +1045,10 @@ function initIdentity() {
 // ===================== 云数据库操作 =====================
 // 写入配装数据到云数据库
 async function writeRandomDataToCloud(data) {
-    if (!randomDataRef) return;
+    if (!randomDataRef) {
+        showToast("云同步未开启，仅本地生成");
+        return;
+    }
 
     try {
         // 先清空旧数据
@@ -1037,6 +1065,7 @@ async function writeRandomDataToCloud(data) {
             updateType: "generate" // generate/commander/reset
         });
         console.log("数据写入成功");
+        showToast("数据同步成功！");
     } catch (error) {
         showToast(`数据同步失败：${error.message}`);
         console.error("数据写入失败：", error);
@@ -1058,8 +1087,16 @@ async function writeCommanderDataToCloud(commander) {
                 updateTime: new Date().toLocaleString(),
                 updateType: "commander"
             });
+        } else {
+            // 如果没有基础数据，先写入
+            await randomDataRef.add({
+                commander: commander,
+                updateTime: new Date().toLocaleString(),
+                updateType: "commander"
+            });
         }
         console.log("指挥官数据同步成功");
+        showToast("指挥官同步成功！");
     } catch (error) {
         showToast(`指挥官同步失败：${error.message}`);
         console.error("指挥官写入失败：", error);
@@ -1068,7 +1105,10 @@ async function writeCommanderDataToCloud(commander) {
 
 // 清空云数据库数据（重置）
 async function clearCloudData() {
-    if (!randomDataRef) return;
+    if (!randomDataRef) {
+        showToast("云同步未开启，仅本地重置");
+        return;
+    }
 
     try {
         const oldData = await randomDataRef.get();
@@ -1084,6 +1124,7 @@ async function clearCloudData() {
             updateType: "reset"
         });
         console.log("数据重置成功");
+        showToast("数据重置成功！");
     } catch (error) {
         showToast(`重置同步失败：${error.message}`);
         console.error("数据重置失败：", error);
@@ -1431,11 +1472,13 @@ function resetAll() {
     showToast("已重置所有配置！");
 }
 
-// ===================== 事件绑定 =====================
-// 页面加载完成后初始化
-window.addEventListener('DOMContentLoaded', () => {
+// ===================== 页面初始化 =====================
+window.addEventListener('DOMContentLoaded', async () => {
     // 初始化身份
     initIdentity();
+
+    // 初始化云开发（WEB端）
+    await initCloud();
 
     // 初始化云数据库监听
     listenCloudDataChange();
