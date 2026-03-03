@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>三角洲行动 - 随机配装生成器</title>
+<title>三角洲行动 - 随机配装生成器（多人同步版）</title>
+<!-- 引入微信云开发SDK -->
+<script src="https://res.wx.qq.com/open/js/cloudbase/1.1.0/cloud.js"></script>
 <script src="app.js?v=1.0.1"></script>
 <style>
 *{
@@ -27,6 +29,25 @@ body {
     background-attachment:fixed;
     display:flex;
     flex-direction:column;
+}
+
+/* 房主/查看者身份标识 */
+.identity-tag {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    padding: 8px 15px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: white;
+    z-index: 999;
+}
+.host-tag {
+    background: #ff7a00;
+}
+.viewer-tag {
+    background: #1890ff;
 }
 
 /* 让容器占满整个视口，无溢出 */
@@ -132,6 +153,11 @@ h1{
     box-shadow:none !important;
 }
 
+/* 查看者模式下按钮隐藏 */
+.btn-hidden {
+    display: none !important;
+}
+
 /* 指挥官按钮点击动画 */
 .commander-btn.click-animate{
     animation: commanderClick 0.5s ease;
@@ -210,6 +236,10 @@ h1{
     overflow-y: auto; /* 仅配置面板内容过多时内部滚动 */
     /* 隐藏配置面板滚动条 */
     scrollbar-width: none; /* Firefox */
+}
+/* 查看者模式下配置面板隐藏 */
+.config-panel-hidden {
+    display: none !important;
 }
 /* 隐藏Chrome/Edge配置面板滚动条 */
 .config-panel::-webkit-scrollbar {
@@ -554,6 +584,11 @@ h1{
     .result-box{
         min-height: 70px;
     }
+    /* 移动端身份标识调整 */
+    .identity-tag {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+    }
 }
 
 /* 解决iOS上的点击高亮问题 */
@@ -568,11 +603,14 @@ button {
 </style>
 </head>
 <body>
+<!-- 身份标识 -->
+<div class="identity-tag" id="identityTag"></div>
+
 <div class="container">
     <!-- 左侧主内容区 -->
     <div class="main-content">
         <h1>三角洲行动 - 随机配装生成器</h1>
-        <p class="subtitle">官方真实数据版｜武器概率｜机密/绝密模式｜人数选择</p>
+        <p class="subtitle">官方真实数据版｜武器概率｜机密/绝密模式｜人数选择（多人同步版）</p>
 
         <!-- 当前模式提示 -->
         <div class="mode-indicator" id="modeIndicator">当前模式：绝密模式</div>
@@ -621,7 +659,7 @@ button {
     </div>
 
     <!-- 右侧配置面板 -->
-    <div class="config-panel">
+    <div class="config-panel" id="configPanel">
         <div class="config-row">
             <div class="config-item">
                 <label>干员人数</label>
@@ -673,7 +711,30 @@ button {
 </div>
 
 <script>
-// 全局变量：存储当前生成的干员列表和指挥官
+// ===================== 微信云开发配置（替换成你的！） =====================
+const cloudConfig = {
+    env: "sanjiaozhou-env-4g10z4vy00b2121e", // 替换为微信云开发的环境ID
+    region: "ap-shanghai" // 替换为你的环境地域（如 ap-beijing、ap-guangzhou）
+};
+
+// 初始化微信云开发
+let db = null;
+let randomDataRef = null;
+try {
+    const cloud = window.cloud;
+    cloud.init(cloudConfig);
+    db = cloud.database();
+    randomDataRef = db.collection('delta_random'); // 存储配装数据的集合
+    console.log("微信云开发初始化成功");
+} catch (error) {
+    showToast(`云开发初始化失败：${error.message}`);
+    console.error("云开发初始化失败：", error);
+}
+
+// ===================== 全局变量 =====================
+// 身份标识：true=房主，false=查看者
+let isHost = false;
+// 存储当前生成的干员列表和指挥官
 let currentOperators = [];
 let currentCommander = null;
 let isFirstGenerate = true; // 标记是否首次生成
@@ -926,9 +987,238 @@ function showLoading(spinnerId, show) {
     }
 }
 
+// ===================== 身份初始化 =====================
+function initIdentity() {
+    // 通过URL参数判断身份：?host=1 是房主
+    const urlParams = new URLSearchParams(window.location.search);
+    isHost = urlParams.has('host') && urlParams.get('host') === '1';
+
+    // 更新身份标识
+    const identityTag = document.getElementById('identityTag');
+    if (isHost) {
+        identityTag.textContent = "房主（可操作）";
+        identityTag.className = "identity-tag host-tag";
+        // 房主可见按钮和配置面板
+        document.getElementById('configPanel').classList.remove('config-panel-hidden');
+    } else {
+        identityTag.textContent = "查看者（仅查看）";
+        identityTag.className = "identity-tag viewer-tag";
+        // 查看者隐藏所有操作按钮和配置面板
+        document.getElementById('generateBtn').classList.add('btn-hidden');
+        document.getElementById('commanderBtn').classList.add('btn-hidden');
+        document.getElementById('resetBtn').classList.add('btn-hidden');
+        document.getElementById('configPanel').classList.add('config-panel-hidden');
+
+        // 查看者禁用所有配置项（防止手动操作）
+        document.querySelectorAll('#configPanel input, #configPanel select').forEach(el => {
+            el.disabled = true;
+        });
+    }
+}
+
+// ===================== 云数据库操作 =====================
+// 写入配装数据到云数据库
+async function writeRandomDataToCloud(data) {
+    if (!randomDataRef) return;
+
+    try {
+        // 先清空旧数据
+        const oldData = await randomDataRef.get();
+        if (oldData.data.length > 0) {
+            for (const doc of oldData.data) {
+                await randomDataRef.doc(doc._id).remove();
+            }
+        }
+        // 写入新数据
+        await randomDataRef.add({
+            ...data,
+            updateTime: new Date().toLocaleString(),
+            updateType: "generate" // generate/commander/reset
+        });
+        console.log("数据写入成功");
+    } catch (error) {
+        showToast(`数据同步失败：${error.message}`);
+        console.error("数据写入失败：", error);
+    }
+}
+
+// 写入指挥官数据到云数据库
+async function writeCommanderDataToCloud(commander) {
+    if (!randomDataRef || !commander) return;
+
+    try {
+        // 获取最新数据
+        const latestData = await randomDataRef.orderBy('updateTime', 'desc').limit(1).get();
+        if (latestData.data.length > 0) {
+            const docId = latestData.data[0]._id;
+            // 更新指挥官信息
+            await randomDataRef.doc(docId).update({
+                commander: commander,
+                updateTime: new Date().toLocaleString(),
+                updateType: "commander"
+            });
+        }
+        console.log("指挥官数据同步成功");
+    } catch (error) {
+        showToast(`指挥官同步失败：${error.message}`);
+        console.error("指挥官写入失败：", error);
+    }
+}
+
+// 清空云数据库数据（重置）
+async function clearCloudData() {
+    if (!randomDataRef) return;
+
+    try {
+        const oldData = await randomDataRef.get();
+        if (oldData.data.length > 0) {
+            for (const doc of oldData.data) {
+                await randomDataRef.doc(doc._id).remove();
+            }
+        }
+        // 写入重置标记
+        await randomDataRef.add({
+            isReset: true,
+            updateTime: new Date().toLocaleString(),
+            updateType: "reset"
+        });
+        console.log("数据重置成功");
+    } catch (error) {
+        showToast(`重置同步失败：${error.message}`);
+        console.error("数据重置失败：", error);
+    }
+}
+
+// 监听云数据库变化（实时同步）
+function listenCloudDataChange() {
+    if (!randomDataRef) return;
+
+    // 实时监听最新数据
+    randomDataRef.orderBy('updateTime', 'desc').limit(1).watch({
+        onChange: (snapshot) => {
+            if (snapshot.docs.length > 0) {
+                const data = snapshot.docs[0].data();
+                console.log("收到同步数据：", data);
+
+                if (data.isReset) {
+                    // 重置操作
+                    handleCloudReset();
+                } else if (data.updateType === "commander") {
+                    // 指挥官更新
+                    handleCloudCommander(data.commander);
+                } else if (data.updateType === "generate") {
+                    // 配装生成
+                    handleCloudGenerate(data);
+                }
+            }
+        },
+        onError: (err) => {
+            showToast(`同步失败：${err.message}`);
+            console.error("监听失败：", err);
+        }
+    });
+}
+
+// 处理云端生成的配装数据
+function handleCloudGenerate(data) {
+    // 显示结果容器
+    document.getElementById("resultContainer").classList.add("show");
+    isFirstGenerate = false;
+
+    // 控制行数显示/隐藏
+    const count = data.count;
+    document.getElementById("row1").classList.remove('hidden');
+    document.getElementById("row2").classList.remove('hidden');
+    document.getElementById("row3").classList.remove('hidden');
+    if(count === 1){
+        document.getElementById("row2").classList.add('hidden');
+        document.getElementById("row3").classList.add('hidden');
+    }else if(count === 2){
+        document.getElementById("row3").classList.add('hidden');
+    }
+
+    // 渲染配装数据
+    currentOperators = data.operators;
+    for(let i=0;i<count;i++){
+        // 干员
+        document.getElementById(`op${i+1}`).textContent = `${data.operators[i].name} (${data.operators[i].role})`;
+        // 武器
+        document.getElementById(`wp${i+1}`).textContent = data.weapons[i].name;
+        // 头盔
+        document.getElementById(`hl${i+1}`).innerHTML = `${data.helmets[i].name} <span class="level-tag">${data.helmets[i].level}级</span>`;
+        // 护甲
+        document.getElementById(`ar${i+1}`).innerHTML = `${data.armors[i].name} <span class="level-tag">${data.armors[i].level}级</span>`;
+    }
+
+    // 触发动画
+    setTimeout(()=>{
+        const visibleBoxes = document.querySelectorAll('.result-row:not(.hidden) .result-box');
+        visibleBoxes.forEach((b,i)=>{
+            setTimeout(()=>{
+                b.classList.add('animate');
+            },i*80);
+        });
+    },100);
+
+    // 如果有指挥官，高亮显示
+    if (data.commander) {
+        currentCommander = data.commander;
+        highlightCommander();
+        const commanderTip = document.getElementById("commanderTip");
+        commanderTip.textContent = `当前指挥官：${currentCommander.name} (${currentCommander.role})`;
+        commanderTip.classList.add("show");
+    }
+
+    // 更新模式提示
+    updateModeIndicator();
+}
+
+// 处理云端指挥官数据
+function handleCloudCommander(commander) {
+    if (!commander) return;
+
+    currentCommander = commander;
+    highlightCommander();
+
+    // 更新指挥官提示
+    const commanderTip = document.getElementById("commanderTip");
+    commanderTip.textContent = `当前指挥官：${commander.name} (${commander.role})`;
+    commanderTip.classList.add("show");
+}
+
+// 处理云端重置操作
+function handleCloudReset() {
+    // 重置全局变量
+    currentOperators = [];
+    currentCommander = null;
+    isFirstGenerate = true;
+
+    // 隐藏结果容器
+    document.getElementById("resultContainer").classList.remove("show");
+
+    // 重置指挥官提示
+    const commanderTip = document.getElementById("commanderTip");
+    commanderTip.classList.remove("show");
+    commanderTip.textContent = "当前指挥官：红狼 (突击手)";
+
+    // 清除所有高亮
+    document.querySelectorAll(".box-content").forEach(el => {
+        el.classList.remove("commander");
+    });
+    document.querySelectorAll(".result-box").forEach(box => {
+        box.classList.remove("commander-box");
+        box.classList.remove("animate");
+    });
+
+    // 重置模式提示
+    updateModeIndicator();
+}
+
 // ===================== 指挥官相关函数 =====================
 // 切换指挥官按钮显示/隐藏
 function toggleCommanderBtn() {
+    if (!isHost) return; // 仅房主处理
+
     const count = parseInt(document.getElementById("operatorCount").value);
 
     if(count >= 2 && !isFirstGenerate){
@@ -940,8 +1230,10 @@ function toggleCommanderBtn() {
     }
 }
 
-// 随机选择指挥官
+// 随机选择指挥官（房主操作）
 function randomCommander() {
+    if(!isHost) return; // 仅房主可操作
+
     if(currentOperators.length === 0) {
         showToast("请先随机生成干员！");
         return;
@@ -957,13 +1249,16 @@ function randomCommander() {
     // 从当前生成的干员中随机选一位
     currentCommander = currentOperators[Math.floor(Math.random() * currentOperators.length)];
 
-    // 更新提示
+    // 更新本地提示
     const commanderTip = document.getElementById("commanderTip");
     commanderTip.textContent = `当前指挥官：${currentCommander.name} (${currentCommander.role})`;
     commanderTip.classList.add("show");
 
     // 高亮显示指挥官
     highlightCommander();
+
+    // 同步到云数据库
+    writeCommanderDataToCloud(currentCommander);
 }
 
 // 高亮显示指挥官
@@ -991,15 +1286,17 @@ function highlightCommander() {
     }
 }
 
-// ===================== 核心生成函数 =====================
+// ===================== 核心生成函数（房主专属） =====================
 function generate(){
+    if(!isHost) return; // 仅房主可操作
+
     // 显示加载动画
     showLoading("generateSpinner", true);
 
     // 禁用按钮
     setButtonState("generateBtn", true);
 
-    setTimeout(() => {
+    setTimeout(async () => {
         // 首次生成时显示结果容器
         if(isFirstGenerate){
             document.getElementById("resultContainer").classList.add("show");
@@ -1036,7 +1333,7 @@ function generate(){
         const helms = getRandomUniqueItems(getHelmetsByMode(mode), count);
         const arms = getRandomUniqueItems(getArmorsByMode(mode), count);
 
-        // 渲染数据（武器不显示等级，头盔护甲显示等级）
+        // 渲染本地数据
         for(let i=0;i<count;i++){
             // 干员
             document.getElementById(`op${i+1}`).textContent = `${currentOperators[i].name} (${currentOperators[i].role})`;
@@ -1066,6 +1363,18 @@ function generate(){
             highlightCommander();
         }
 
+        // 同步数据到云数据库
+        const syncData = {
+            count: count,
+            mode: mode,
+            operators: currentOperators,
+            weapons: weps,
+            helmets: helms,
+            armors: arms,
+            commander: currentCommander
+        };
+        await writeRandomDataToCloud(syncData);
+
         // 隐藏加载动画
         showLoading("generateSpinner", false);
         // 启用按钮
@@ -1074,8 +1383,10 @@ function generate(){
     }, 800); // 模拟加载延迟，提升体验
 }
 
-// 重置功能
+// 重置功能（房主专属）
 function resetAll() {
+    if(!isHost) return; // 仅房主可操作
+
     // 重置全局变量
     currentOperators = [];
     currentCommander = null;
@@ -1103,7 +1414,7 @@ function resetAll() {
         box.classList.remove("animate");
     });
 
-    // 重置配置（可选：恢复默认配置）
+    // 重置配置（恢复默认配置）
     document.getElementById("operatorCount").value = 3;
     document.getElementById("weaponType").value = "all";
     document.getElementById("weaponProb").value = 100;
@@ -1113,52 +1424,68 @@ function resetAll() {
     document.querySelectorAll('.radio-group label')[1].classList.add('active');
     updateModeIndicator();
 
+    // 同步重置到云数据库
+    clearCloudData();
+
     showToast("已重置所有配置！");
 }
 
 // ===================== 事件绑定 =====================
-// 生成按钮点击
-document.getElementById('generateBtn').addEventListener('click', generate);
+// 页面加载完成后初始化
+window.addEventListener('DOMContentLoaded', () => {
+    // 初始化身份
+    initIdentity();
 
-// 随机指挥官按钮点击
-document.getElementById('commanderBtn').addEventListener('click', randomCommander);
+    // 初始化云数据库监听
+    listenCloudDataChange();
 
-// 重置按钮点击
-document.getElementById('resetBtn').addEventListener('click', resetAll);
+    // 生成按钮点击（仅房主）
+    document.getElementById('generateBtn').addEventListener('click', generate);
 
-// 模式选择样式切换
-document.querySelectorAll('.radio-group label').forEach(lb=>{
-    lb.addEventListener('click',()=>{
-        document.querySelectorAll('.radio-group label').forEach(l=>l.classList.remove('active'));
-        lb.classList.add('active');
-        updateModeIndicator();
+    // 随机指挥官按钮点击（仅房主）
+    document.getElementById('commanderBtn').addEventListener('click', randomCommander);
+
+    // 重置按钮点击（仅房主）
+    document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+    // 模式选择样式切换
+    document.querySelectorAll('.radio-group label').forEach(lb=>{
+        lb.addEventListener('click',()=>{
+            if(!isHost) return; // 查看者禁止切换
+            document.querySelectorAll('.radio-group label').forEach(l=>l.classList.remove('active'));
+            lb.classList.add('active');
+            updateModeIndicator();
+        });
     });
+
+    // 概率输入限制
+    document.getElementById('weaponProb').addEventListener('input',function(){
+        if(!isHost) return; // 查看者禁止修改
+        if(this.value<0)this.value=0;
+        if(this.value>100)this.value=100;
+    });
+
+    // 人数选择变化时重新生成（仅房主）
+    document.getElementById('operatorCount').addEventListener('change', function() {
+        if(!isHost) return; // 查看者禁止修改
+
+        currentCommander = null;
+        // 隐藏指挥官提示
+        document.getElementById("commanderTip").classList.remove("show");
+        // 只有非首次生成时才重新生成
+        if(!isFirstGenerate){
+            generate();
+        } else {
+            toggleCommanderBtn();
+        }
+    });
+
+    // 初始化
+    updateModeIndicator();
+
+    // 移动端触摸优化
+    document.addEventListener('touchstart', function() {}, {passive: true});
 });
-
-// 概率输入限制
-document.getElementById('weaponProb').addEventListener('input',function(){
-    if(this.value<0)this.value=0;
-    if(this.value>100)this.value=100;
-});
-
-// 人数选择变化时重新生成
-document.getElementById('operatorCount').addEventListener('change', function() {
-    currentCommander = null;
-    // 隐藏指挥官提示
-    document.getElementById("commanderTip").classList.remove("show");
-    // 只有非首次生成时才重新生成
-    if(!isFirstGenerate){
-        generate();
-    } else {
-        toggleCommanderBtn();
-    }
-});
-
-// 初始化
-updateModeIndicator();
-
-// 移动端触摸优化
-document.addEventListener('touchstart', function() {}, {passive: true});
 </script>
 </body>
 </html>
