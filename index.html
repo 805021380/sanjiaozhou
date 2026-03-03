@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>三角洲行动 - 随机配装生成器</title>
 <style>
 *{
@@ -174,6 +174,8 @@ h1{
     transition:opacity 0.3s ease;
     border-left:4px solid #ff7a00;
     font-size:1rem;
+    max-width:90%;
+    text-align:center;
 }
 .toast.show{
     opacity:1;
@@ -299,11 +301,17 @@ h1{
     transition:opacity 0.5s ease, height 0.5s ease;
     flex:1; /* 占满剩余高度 */
     margin-bottom:10px;
+    overflow-y: auto;
+    /* 隐藏结果容器滚动条 */
+    scrollbar-width: none;
+}
+.result-container::-webkit-scrollbar {
+    display: none;
 }
 .result-container.show{
     opacity:1;
     height:auto;
-    overflow: hidden; /* 禁止结果容器滚动 */
+    overflow-y: auto;
 }
 .result-row{
     display:grid;
@@ -324,6 +332,7 @@ h1{
     align-items:center;
     /* 卡片高度自适应，不固定最小值 */
     height: 100%;
+    min-height: 120px;
 }
 /* 指挥官卡片专属边框 */
 .result-box.commander-box{
@@ -388,7 +397,8 @@ h1{
 /* 移动端适配 - 完全适配视口，无滚动 */
 @media(max-width:1200px){
     .result-row{
-        grid-template-columns:repeat(2,1fr);
+        grid-template-columns:repeat(4,1fr);
+        gap:15px;
     }
     .container{
         gap:15px;
@@ -399,6 +409,12 @@ h1{
     .container{
         flex-direction:column;
         padding:10px;
+        overflow-y: auto;
+        /* 隐藏容器滚动条 */
+        scrollbar-width: none;
+    }
+    .container::-webkit-scrollbar {
+        display: none;
     }
     .config-panel{
         width:100%;
@@ -408,6 +424,8 @@ h1{
     }
     .main-content{
         padding:0;
+        flex: none;
+        min-height: calc(100vh - 320px);
     }
     .generate-btn, .commander-btn, .reset-btn{
         width:100%;
@@ -420,10 +438,13 @@ h1{
     .result-box{
         padding:15px 10px;
     }
+    .result-container{
+        margin-bottom: 20px;
+    }
 }
 @media(max-width:768px){
     .result-row{
-        grid-template-columns:1fr;
+        grid-template-columns:repeat(4,1fr);
         gap:10px;
     }
     .btn-container{
@@ -431,42 +452,117 @@ h1{
         align-items:center;
         gap:10px;
         margin-bottom:20px;
+        padding:0 10px;
     }
     .generate-btn, .commander-btn, .reset-btn{
         width:100%;
         max-width:100%;
+        height: 60px;
     }
     .result-box h3{
-        font-size:1rem;
+        font-size:0.9rem;
     }
     .box-content{
-        font-size:0.95rem;
+        font-size:0.85rem;
+        padding: 5px 0;
     }
     h1{
         font-size:1.6rem;
+        padding:0 10px;
     }
     .mode-indicator{
         margin-bottom:15px;
+        padding:0 10px;
+    }
+    .subtitle{
+        padding:0 10px;
+    }
+    .result-box{
+        min-height: 80px;
+        padding:10px 5px;
     }
 }
 @media(max-width:480px){
     body{
         font-size: 0.9rem; /* 全局缩小字体 */
+        overflow-y: auto;
+        /* 隐藏body滚动条 */
+        scrollbar-width: none;
+    }
+    body::-webkit-scrollbar {
+        display: none;
     }
     .container{
         padding:5px;
+        height: auto;
+        min-height: 100vh;
     }
     .result-box{
-        padding:10px 8px;
+        padding:8px 4px;
     }
     h1{
         font-size:1.4rem;
         margin-bottom:8px;
+        line-height: 1.3;
     }
     .subtitle{
         margin-bottom:10px;
         font-size:0.85rem;
     }
+    .config-panel{
+        padding: 15px;
+        max-height: 250px;
+    }
+    .config-row{
+        margin-bottom: 12px;
+    }
+    .config-item label{
+        font-size: 0.9rem;
+    }
+    .radio-group label{
+        padding: 8px 10px;
+        font-size: 0.85rem;
+    }
+    .mode-indicator{
+        font-size: 0.9rem;
+    }
+    .commander-tip{
+        font-size: 0.9rem;
+        margin-bottom: 15px;
+    }
+    .level-tag{
+        font-size: 0.7rem;
+        padding: 2px 6px;
+    }
+    .toast{
+        font-size: 0.9rem;
+        padding: 8px 15px;
+        top: 10px;
+    }
+    .result-row{
+        grid-template-columns:repeat(4,1fr);
+        gap:8px;
+    }
+    .result-box h3{
+        font-size:0.8rem;
+        margin-bottom:5px;
+    }
+    .box-content{
+        font-size:0.75rem;
+    }
+    .result-box{
+        min-height: 70px;
+    }
+}
+
+/* 解决iOS上的点击高亮问题 */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* 解决移动端按钮点击延迟 */
+button {
+    touch-action: manipulation;
 }
 </style>
 </head>
@@ -1059,6 +1155,9 @@ document.getElementById('operatorCount').addEventListener('change', function() {
 
 // 初始化
 updateModeIndicator();
+
+// 移动端触摸优化
+document.addEventListener('touchstart', function() {}, {passive: true});
 </script>
 </body>
 </html>
