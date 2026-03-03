@@ -171,23 +171,34 @@
 
         // ===================== 页面初始化 =====================
         window.onload = async function() {
-            // 1. 匿名登录（必须！SDK需要身份标识）
-            try {
-                await app.auth().anonymousAuthProvider().signIn();
-                showToast("初始化成功");
-            } catch (error) {
-                showToast(`初始化失败：${error.message}`);
-                console.error("登录失败：", error);
-            }
-
-            // 2. 检查房主权限（URL带?host=1显示按钮）
+            // ========== 第一步：优先判断房主权限（不受登录影响） ==========
             const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get("host") === "1") {
+            const isHost = urlParams.get("host") === "1";
+
+            // 调试：打印权限判断结果
+            console.log("是否为房主：", isHost);
+            console.log("URL参数：", urlParams.toString());
+
+            // 显示/隐藏房主按钮（无论登录是否成功，先判断权限）
+            if (isHost) {
                 document.getElementById("host-buttons").style.display = "block";
                 document.getElementById("status").textContent = "你是房主，可生成随机数";
             }
 
-            // 3. 启动轮询
+            // ========== 第二步：初始化云开发登录 ==========
+            try {
+                await app.auth().anonymousAuthProvider().signIn();
+                showToast(isHost ? "房主初始化成功" : "初始化成功");
+            } catch (error) {
+                showToast(`初始化失败：${error.message}`);
+                console.error("登录失败：", error);
+                // 即使登录失败，房主按钮依然显示（仅影响数据库操作）
+                if (isHost) {
+                    document.getElementById("status").textContent = "你是房主，但初始化失败，无法操作";
+                }
+            }
+
+            // ========== 第三步：启动轮询 ==========
             pollLatestNumber();
             setInterval(pollLatestNumber, 2000);
         };
