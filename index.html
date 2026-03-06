@@ -1,207 +1,1064 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>腾讯云随机数同步</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: Arial, sans-serif;
-        }
-        .container {
-            max-width: 600px;
-            margin: 50px auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .random-num {
-            font-size: 80px;
-            font-weight: bold;
-            color: #1677ff;
-            margin: 30px 0;
-            height: 100px;
-            line-height: 100px;
-        }
-        .btn {
-            padding: 12px 30px;
-            font-size: 18px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            margin: 0 10px;
-        }
-        .generate-btn {
-            background-color: #1677ff;
-            color: white;
-        }
-        .reset-btn {
-            background-color: #ff4d4f;
-            color: white;
-        }
-        .toast {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 10px 20px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            border-radius: 4px;
-            display: none;
-            z-index: 999;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三角洲行动 - 随机配装生成器</title>
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family: 'Microsoft Yahei',sans-serif;
+}
+/* 核心：隐藏所有滚动条 */
+body {
+    overflow: hidden; /* 关键：禁止页面滚动 */
+    background:#0a0a0f;
+    color:#e0e0e0;
+    height: 100vh; /* 固定高度为视口高度 */
+    width: 100vw; /* 固定宽度为视口宽度 */
+    padding:0;
+    margin:0;
+    background-image:linear-gradient(rgba(0,0,0,0.9),rgba(0,0,0,0.95)),url('https://picsum.photos/id/1018/1920/1080');
+    background-size:cover;
+    background-position:center;
+    background-attachment:fixed;
+    display:flex;
+    flex-direction:column;
+}
+
+/* 让容器占满整个视口，无溢出 */
+.container{
+    width:100%;
+    height: 100%; /* 高度100%，不超出视口 */
+    margin:0;
+    background:rgba(18,22,32,0.92);
+    border-radius:0;
+    padding: 20px; /* 减少内边距，避免溢出 */
+    border:none;
+    display:flex;
+    gap:20px;
+    overflow: hidden; /* 容器内禁止滚动 */
+}
+
+/* 左侧内容区域 - 自适应高度，不溢出 */
+.main-content{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    padding:0 10px;
+    overflow: hidden; /* 禁止左侧区域滚动 */
+}
+
+h1{
+    text-align:center;
+    color:#1890ff;
+    margin-bottom:10px;
+    font-size: 2rem; /* 缩小标题，适配视口 */
+    font-weight:bold;
+    line-height: 1.2; /* 紧凑行高 */
+}
+.subtitle{
+    text-align:center;
+    color:#999;
+    margin-bottom:15px;
+    font-size:0.95rem;
+}
+
+/* 当前模式提示 */
+.mode-indicator{
+    text-align:center;
+    color:#ff7a00;
+    font-size:1rem;
+    margin-bottom:20px;
+    font-weight:bold;
+}
+
+/* 按钮容器 - 紧凑布局 */
+.btn-container{
+    display:flex;
+    justify-content:center;
+    gap:15px;
+    margin:0 auto 25px;
+    flex-wrap:wrap;
+}
+
+.generate-btn, .commander-btn, .reset-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    height:50px;
+    padding:0 25px;
+    background:linear-gradient(135deg,#1890ff,#0050b3);
+    color:white;
+    border:none;
+    border-radius:10px;
+    font-size:1rem;
+    font-weight:bold;
+    cursor:pointer;
+    transition:0.3s;
+}
+.generate-btn{
+    width:200px;
+}
+.commander-btn{
+    width:200px;
+    background:linear-gradient(135deg,#ff7a00,#ff4500);
+    display:none;
+}
+.reset-btn{
+    width:130px;
+    background:linear-gradient(135deg,#868686,#5c5c5c);
+}
+.generate-btn:hover, .commander-btn:hover, .reset-btn:hover{
+    transform:translateY(-3px);
+    box-shadow:0 6px 15px rgba(24,144,255,0.3);
+}
+.commander-btn:hover{
+    box-shadow:0 6px 15px rgba(255,122,0,0.3);
+}
+.reset-btn:hover{
+    box-shadow:0 6px 15px rgba(134,134,134,0.3);
+}
+
+/* 按钮禁用状态 */
+.btn-disabled{
+    opacity:0.6;
+    cursor:not-allowed;
+    transform:none !important;
+    box-shadow:none !important;
+}
+
+/* 指挥官按钮点击动画 */
+.commander-btn.click-animate{
+    animation: commanderClick 0.5s ease;
+}
+@keyframes commanderClick {
+    0% { transform: translateY(-3px) scale(1); }
+    50% { transform: translateY(0) scale(0.95); }
+    100% { transform: translateY(-3px) scale(1); }
+}
+
+/* 加载动画 */
+.loading-spinner{
+    display:inline-block;
+    width:22px;
+    height:22px;
+    border:3px solid rgba(255,255,255,0.3);
+    border-radius:50%;
+    border-top-color:white;
+    animation: spin 1s ease-in-out infinite;
+    display:none;
+}
+.loading-spinner.show{
+    display:inline-block;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 提示弹窗 */
+.toast{
+    position:fixed;
+    top:20px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,0.85);
+    color:white;
+    padding:10px 20px;
+    border-radius:8px;
+    z-index:9999;
+    opacity:0;
+    transition:opacity 0.3s ease;
+    border-left:4px solid #ff7a00;
+    font-size:1rem;
+}
+.toast.show{
+    opacity:1;
+}
+
+/* 指挥官提示 */
+.commander-tip{
+    text-align:center;
+    color:#ff7a00;
+    font-size:1rem;
+    font-weight:bold;
+    margin-bottom:20px;
+    height:26px;
+    opacity:0;
+    transition:opacity 0.3s ease;
+}
+.commander-tip.show{
+    opacity:1;
+}
+
+/* 配置面板 - 适配视口高度 */
+.config-panel{
+    background:rgba(25,35,50,0.95);
+    border-radius:12px;
+    padding:20px;
+    width:300px;
+    flex-shrink:0;
+    height: fit-content; /* 高度自适应内容 */
+    max-height: 95%; /* 最大高度不超过视口95% */
+    margin: auto 0; /* 垂直居中，避免溢出 */
+    overflow-y: auto; /* 仅配置面板内容过多时内部滚动 */
+    /* 隐藏配置面板滚动条 */
+    scrollbar-width: none; /* Firefox */
+}
+/* 隐藏Chrome/Edge配置面板滚动条 */
+.config-panel::-webkit-scrollbar {
+    display: none;
+}
+
+.config-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    margin-bottom:15px;
+    align-items:center;
+}
+.config-item{
+    flex:1;
+    min-width:100%;
+}
+.config-item label{
+    display:block;
+    color:#1890ff;
+    margin-bottom:6px;
+    font-size:1rem;
+    font-weight:bold;
+}
+.config-item select, .config-item input{
+    width:100%;
+    padding:10px 12px;
+    background:rgba(15,20,30,0.95);
+    border:1px solid rgba(24,144,255,0.3);
+    border-radius:6px;
+    color:#fff;
+    font-size:0.95rem;
+    outline:none;
+}
+.config-item select option{
+    background:#192332;
+    color:#fff;
+    font-size:0.95rem;
+    padding:8px;
+}
+.radio-group{
+    display:flex;
+    gap:8px;
+}
+.radio-group label{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    color:#e0e0e0;
+    cursor:pointer;
+    padding:10px 12px;
+    border-radius:6px;
+    flex:1;
+    justify-content:center;
+    background:rgba(15,20,30,0.95);
+    border:1px solid rgba(24,144,255,0.2);
+    font-size:0.95rem;
+}
+.radio-group input{
+    width:auto;
+    height:16px;
+    width:16px;
+}
+.radio-group label.active{
+    background:rgba(24,144,255,0.2);
+    border-color:#1890ff;
+}
+.prob-input{
+    display:flex;
+    gap:8px;
+}
+.prob-input input{
+    flex:1;
+}
+.prob-input span{
+    display:flex;
+    align-items:center;
+    color:#999;
+    font-size:0.95rem;
+}
+
+/* 结果容器 - 自适应剩余高度，无溢出 */
+.result-container{
+    display:flex;
+    flex-direction:column;
+    gap:15px;
+    opacity:0;
+    height:0;
+    overflow:hidden;
+    transition:opacity 0.5s ease, height 0.5s ease;
+    flex:1; /* 占满剩余高度 */
+    margin-bottom:10px;
+}
+.result-container.show{
+    opacity:1;
+    height:auto;
+    overflow: hidden; /* 禁止结果容器滚动 */
+}
+.result-row{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:15px;
+}
+/* 核心修改：放大配装卡片但适配高度 */
+.result-box{
+    background:linear-gradient(180deg,rgba(25,35,50,0.95),rgba(15,20,30,0.95));
+    border-radius:12px;
+    padding:20px 15px; /* 适中内边距 */
+    border:1px solid rgba(24,144,255,0.3);
+    opacity:0;
+    transform:translateY(20px);
+    transition:opacity 0.5s ease, transform 0.5s ease;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    /* 卡片高度自适应，不固定最小值 */
+    height: 100%;
+}
+/* 指挥官卡片专属边框 */
+.result-box.commander-box{
+    border:2px solid #ff7a00;
+    box-shadow:0 0 12px rgba(255,122,0,0.3);
+}
+.result-box.animate{
+    opacity:1;
+    transform:translateY(0);
+}
+.result-box h3{
+    color:#1890ff;
+    text-align:center;
+    margin-bottom:10px;
+    font-size:1.1rem;
+    padding-bottom:8px;
+    border-bottom:1px solid rgba(24,144,255,0.15);
+    width:100%;
+}
+.box-content{
+    text-align:center;
+    font-size:1rem;
+    color:#fff;
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:5px 0;
+    word-break:break-all;
+    line-height:1.4;
+}
+/* 装备等级标签 */
+.level-tag{
+    display:inline-block;
+    background:rgba(255,122,0,0.2);
+    color:#ff7a00;
+    font-size:0.8rem;
+    padding:3px 8px;
+    border-radius:4px;
+    margin-left:6px;
+    margin-top:4px;
+    white-space:nowrap;
+}
+/* 指挥官标识 */
+.box-content.commander{
+    color:#ff7a00;
+    font-weight:bold;
+    text-shadow:0 0 8px rgba(255,122,0,0.5);
+    animation: commanderHighlight 0.6s ease;
+}
+@keyframes commanderHighlight {
+    0% { color:#fff; text-shadow:none; }
+    50% { color:#ff7a00; text-shadow:0 0 12px rgba(255,122,0,0.8); transform:scale(1.05); }
+    100% { color:#ff7a00; text-shadow:0 0 8px rgba(255,122,0,0.5); transform:scale(1); }
+}
+
+/* 隐藏多余的行 */
+.result-row.hidden{
+    display:none;
+}
+
+/* 移动端适配 - 完全适配视口，无滚动 */
+@media(max-width:1200px){
+    .result-row{
+        grid-template-columns:repeat(2,1fr);
+    }
+    .container{
+        gap:15px;
+        padding:15px;
+    }
+}
+@media(max-width:992px){
+    .container{
+        flex-direction:column;
+        padding:10px;
+    }
+    .config-panel{
+        width:100%;
+        max-width:100%;
+        max-height: 280px; /* 限制配置面板高度 */
+        margin:0 auto 15px;
+    }
+    .main-content{
+        padding:0;
+    }
+    .generate-btn, .commander-btn, .reset-btn{
+        width:100%;
+        max-width:220px;
+        height:55px;
+    }
+    h1{
+        font-size:1.8rem;
+    }
+    .result-box{
+        padding:15px 10px;
+    }
+}
+@media(max-width:768px){
+    .result-row{
+        grid-template-columns:1fr;
+        gap:10px;
+    }
+    .btn-container{
+        flex-direction:column;
+        align-items:center;
+        gap:10px;
+        margin-bottom:20px;
+    }
+    .generate-btn, .commander-btn, .reset-btn{
+        width:100%;
+        max-width:100%;
+    }
+    .result-box h3{
+        font-size:1rem;
+    }
+    .box-content{
+        font-size:0.95rem;
+    }
+    h1{
+        font-size:1.6rem;
+    }
+    .mode-indicator{
+        margin-bottom:15px;
+    }
+}
+@media(max-width:480px){
+    body{
+        font-size: 0.9rem; /* 全局缩小字体 */
+    }
+    .container{
+        padding:5px;
+    }
+    .result-box{
+        padding:10px 8px;
+    }
+    h1{
+        font-size:1.4rem;
+        margin-bottom:8px;
+    }
+    .subtitle{
+        margin-bottom:10px;
+        font-size:0.85rem;
+    }
+}
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>随机数同步（腾讯云版）</h1>
-        <!-- 房主专属按钮 -->
-        <div id="host-buttons" style="display: none;">
-            <button class="btn generate-btn" onclick="generateRandomNumber()">生成随机数</button>
-            <button class="btn reset-btn" onclick="resetRandomNumber()">重置</button>
+<div class="container">
+    <!-- 左侧主内容区 -->
+    <div class="main-content">
+        <h1>三角洲行动 - 随机配装生成器</h1>
+        <p class="subtitle">官方真实数据版｜武器概率｜机密/绝密模式｜人数选择</p>
+
+        <!-- 当前模式提示 -->
+        <div class="mode-indicator" id="modeIndicator">当前模式：绝密模式</div>
+
+        <!-- 按钮容器 -->
+        <div class="btn-container">
+            <button class="generate-btn" id="generateBtn">
+                <span class="loading-spinner" id="generateSpinner"></span>
+                随机生成
+            </button>
+            <button class="commander-btn" id="commanderBtn" disabled>
+                随机指挥官
+            </button>
+            <button class="reset-btn" id="resetBtn">重置</button>
         </div>
-        <div class="random-num" id="random-number">--</div>
-        <div class="status">当前状态：<span id="status">等待同步...</span></div>
+
+        <!-- 指挥官提示 -->
+        <div class="commander-tip" id="commanderTip">当前指挥官：红狼 (突击手)</div>
+
+        <!-- 提示弹窗 -->
+        <div class="toast" id="toast">操作提示</div>
+
+        <div class="result-container" id="resultContainer">
+            <!-- 第1行（默认显示） -->
+            <div class="result-row" id="row1">
+                <div class="result-box" id="boxOp1"><h3>干员</h3><div class="box-content" id="op1"></div></div>
+                <div class="result-box" id="boxWp1"><h3>武器</h3><div class="box-content" id="wp1"></div></div>
+                <div class="result-box" id="boxHl1"><h3>头盔</h3><div class="box-content" id="hl1"></div></div>
+                <div class="result-box" id="boxAr1"><h3>护甲</h3><div class="box-content" id="ar1"></div></div>
+            </div>
+            <!-- 第2行（默认显示） -->
+            <div class="result-row" id="row2">
+                <div class="result-box" id="boxOp2"><h3>干员</h3><div class="box-content" id="op2"></div></div>
+                <div class="result-box" id="boxWp2"><h3>武器</h3><div class="box-content" id="wp2"></div></div>
+                <div class="result-box" id="boxHl2"><h3>头盔</h3><div class="box-content" id="hl2"></div></div>
+                <div class="result-box" id="boxAr2"><h3>护甲</h3><div class="box-content" id="ar2"></div></div>
+            </div>
+            <!-- 第3行（默认显示） -->
+            <div class="result-row" id="row3">
+                <div class="result-box" id="boxOp3"><h3>干员</h3><div class="box-content" id="op3"></div></div>
+                <div class="result-box" id="boxWp3"><h3>武器</h3><div class="box-content" id="wp3"></div></div>
+                <div class="result-box" id="boxHl3"><h3>头盔</h3><div class="box-content" id="hl3"></div></div>
+                <div class="result-box" id="boxAr3"><h3>护甲</h3><div class="box-content" id="ar3"></div></div>
+            </div>
+        </div>
     </div>
-    <div class="toast" id="toast"></div>
 
-    <!-- 引入腾讯云开发前端SDK（核心，无需密钥） -->
-    <script src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
-    <script src="https://imgcache.qq.com/qcloud/tcbjs/1.26.0/tcb.js"></script>
-    <script>
-        // ===================== 云开发配置（仅需环境ID，无密钥！）=====================
-        const tcbConfig = {
-            env: "sanjiaozhou-env-4g10z4vy00b2121e", // 替换为你的环境ID
-            region: "ap-shanghai" // 替换为你的环境地域
-        };
+    <!-- 右侧配置面板 -->
+    <div class="config-panel">
+        <div class="config-row">
+            <div class="config-item">
+                <label>干员人数</label>
+                <select id="operatorCount">
+                    <option value="1">1人</option>
+                    <option value="2">2人</option>
+                    <option value="3" selected>3人</option>
+                </select>
+            </div>
+        </div>
+        <div class="config-row">
+            <div class="config-item">
+                <label>武器类型概率</label>
+                <select id="weaponType">
+                    <option value="all">全部武器</option>
+                    <option value="assault_rifle">突击步枪</option>
+                    <option value="smg">冲锋枪</option>
+                    <option value="sniper">狙击枪</option>
+                    <option value="dmr">精确射手步枪</option>
+                    <option value="lmg">轻机枪</option>
+                    <option value="shotgun">霰弹枪</option>
+                    <option value="pistol">手枪</option>
+                </select>
+            </div>
+        </div>
+        <div class="config-row">
+            <div class="config-item">
+                <label>选中类型概率（%）</label>
+                <div class="prob-input">
+                    <input type="number" id="weaponProb" min="0" max="100" value="100">
+                    <span>%</span>
+                </div>
+            </div>
+        </div>
+        <div class="config-row">
+            <div class="config-item">
+                <label>模式选择</label>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="mode" value="secret"> 机密模式
+                    </label>
+                    <label class="active">
+                        <input type="radio" name="mode" value="top_secret" checked> 绝密模式
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-        // 初始化云开发
-        const app = tcb.init(tcbConfig);
-        // 获取数据库引用
-        const db = app.database();
-        // 引用random_number集合
-        const randomNumCollection = db.collection('random_number');
+<script>
+// 全局变量：存储当前生成的干员列表和指挥官
+let currentOperators = [];
+let currentCommander = null;
+let isFirstGenerate = true; // 标记是否首次生成
 
-        // ===================== 工具函数 =====================
-        function showToast(msg) {
-            const toast = document.getElementById("toast");
-            toast.textContent = msg;
-            toast.style.display = "block";
-            setTimeout(() => {
-                toast.style.display = "none";
-            }, 2000);
+// 干员
+const operators = [
+    { name: "红狼", role: "突击手" },
+    { name: "威龙", role: "突击手" },
+    { name: "疾风", role: "突击手" },
+    { name: "露娜", role: "侦察兵" },
+    { name: "银翼", role: "侦察兵" },
+    { name: "蜂医", role: "医疗兵" },
+    { name: "蝶", role: "医疗兵" },
+    { name: "佐娅", role: "医疗兵" },
+    { name: "比特", role: "工程兵" },
+    { name: "牧羊人", role: "工程兵" },
+    { name: "盾构", role: "工程兵" },
+    { name: "乌鲁鲁", role: "工程兵" },
+    { name: "无名", role: "信息位" },
+    { name: "骇爪", role: "潜入者" },
+];
+
+// 武器（官方分级）
+const weapons = {
+    level1: [
+        { name: "CAR-15 突击步枪", type: "assault_rifle", level: 1 },
+        { name: "AKS-74U 突击步枪", type: "assault_rifle", level: 1 },
+        { name: "M16A4 突击步枪", type: "assault_rifle", level: 1 },
+        { name: "UZI 冲锋枪", type: "smg", level: 1 },
+        { name: "野牛冲锋枪", type: "smg", level: 1 },
+        { name: "725 双管霰弹枪", type: "shotgun", level: 1 },
+        { name: "G17 手枪", type: "pistol", level: 1 },
+        { name: "QSZ92G 手枪（九二式改进型）", type: "pistol", level: 1 },
+        { name: "G18 手枪", type: "pistol", level: 1 },
+        { name: "沙漠之鹰", type: "pistol", level: 1 }
+    ],
+    level2: [
+        { name: "G3 战斗步枪", type: "assault_rifle", level: 2 },
+        { name: "PTR-32 突击步枪", type: "assault_rifle", level: 2 },
+        { name: "SG552 突击步枪", type: "assault_rifle", level: 2 },
+        { name: "QBZ-95-1 突击步枪（九五式）", type: "assault_rifle", level: 2 },
+        { name: "MP5 冲锋枪", type: "smg", level: 2 },
+        { name: "SMG-45 冲锋枪", type: "smg", level: 2 },
+        { name: "QCQ171 冲锋枪（二〇式冲锋枪）", type: "smg", level: 2 },
+        { name: "勇士冲锋枪（Vityaz）", type: "smg", level: 2 },
+        { name: "Mini-14 射手步枪", type: "dmr", level: 2 },
+        { name: "S12K 霰弹枪", type: "shotgun", level: 2 },
+        { name: "M1911（三角洲定制款）", type: "pistol", level: 2 },
+        { name: ".357 左轮手枪", type: "pistol", level: 2 }
+    ],
+    level3: [
+        { name: "AKM 突击步枪", type: "assault_rifle", level: 3 },
+        { name: "M4A1 突击步枪", type: "assault_rifle", level: 3 },
+        { name: "AK-12 突击步枪", type: "assault_rifle", level: 3 },
+        { name: "AUG 突击步枪", type: "assault_rifle", level: 3 },
+        { name: "腾龙突击步枪（QBZ-191，二〇式）", type: "assault_rifle", level: 3 },
+        { name: "KC17 突击步枪", type: "assault_rifle", level: 3 },
+        { name: "ASh-12 战斗步枪", type: "assault_rifle", level: 3 },
+        { name: "SCAR-H 战斗步枪", type: "assault_rifle", level: 3 },
+        { name: "MK47 突击步枪", type: "assault_rifle", level: 3 },
+        { name: "MP7 冲锋枪", type: "smg", level: 3 },
+        { name: "P90 冲锋枪", type: "smg", level: 3 },
+        { name: "Vector 冲锋枪", type: "smg", level: 3 },
+        { name: "MCX LT 突击步枪", type: "smg", level: 3 },
+        { name: "MK4 冲锋枪", type: "smg", level: 3 },
+        { name: "SKS 射手步枪", type: "dmr", level: 3 },
+        { name: "QJB-201 轻机枪（二〇式轻机枪）", type: "lmg", level: 3 },
+        { name: "M249 轻机枪", type: "lmg", level: 3 },
+        { name: "M1014 霰弹枪", type: "shotgun", level: 3 },
+        { name: "SV-98 狙击步枪", type: "sniper", level: 3 },
+        { name: "R93 狙击步枪", type: "sniper", level: 3 }
+    ],
+    level4: [
+        { name: "K416 突击步枪（原型 HK416）", type: "assault_rifle", level: 4 },
+        { name: "M7 战斗步枪", type: "assault_rifle", level: 4 },
+        { name: "K437 突击步枪（原型 HK437）", type: "assault_rifle", level: 4 },
+        { name: "AS Val「巨浪」突击步枪", type: "assault_rifle", level: 4 },
+        { name: "SR-3M 紧凑突击步枪", type: "smg", level: 4 },
+        { name: "M250 通用机枪", type: "lmg", level: 4 },
+        { name: "PKM 通用机枪", type: "lmg", level: 4 },
+        { name: "AWM 狙击步枪", type: "sniper", level: 4 },
+        { name: "SVD 狙击步枪", type: "sniper", level: 4 },
+        { name: "SR-25 射手步枪", type: "dmr", level: 4 },
+        { name: "M14 战斗射手步枪", type: "dmr", level: 4 },
+        { name: "PSG-1 射手步枪", type: "dmr", level: 4 },
+        { name: "VSS 射手步枪", type: "dmr", level: 4 },
+        { name: "SR9 射手步枪", type: "dmr", level: 4 },
+        { name: "Marlin 杠杆步枪", type: "dmr", level: 4 },
+        { name: "M870 霰弹枪", type: "shotgun", level: 4 },
+        { name: "93R 手枪", type: "pistol", level: 4 },
+        { name: "M700 狙击步枪", type: "sniper", level: 4 },
+        { name: "复合弓", type: "special", level: 4 }
+    ]
+};
+
+// 官方头盔数据
+const helmets = {
+    level1: [
+        { name: "户外棒球帽", level: 1 },
+        { name: "H01 战术头盔", level: 1 },
+        { name: "MC 防弹头盔", level: 1 }
+    ],
+    level2: [
+        { name: "MC201 头盔", level: 2 }
+    ],
+    level3: [
+        { name: "MC201 防弹头盔", level: 3 },
+        { name: "DAS 防弹头盔", level: 3 },
+        { name: "H07 战术头盔", level: 3 }
+    ],
+    level4: [
+        { name: "DICH 训练头盔", level: 4 },
+        { name: "GT1 战术头盔", level: 4 },
+        { name: "MHS 战术头盔", level: 4 },
+        { name: "D6 战术头盔", level: 4 }
+    ],
+    level5: [
+        { name: "GN 重型头盔", level: 5 },
+        { name: "DICH‑1 战术头盔", level: 5 },
+        { name: "H09 防暴头盔", level: 5 },
+        { name: "Mask‑1 铁壁头盔", level: 5 }
+    ],
+    level6: [
+        { name: "DICH‑9 重型头盔", level: 6 },
+        { name: "GT5 指挥官头盔", level: 6 },
+        { name: "H70 精英头盔", level: 6 }
+    ]
+};
+
+// 官方护甲数据
+const armors = {
+    level1: [
+        { name: "标准防弹衣", level: 1 }
+    ],
+    level2: [
+        { name: "轻型防弹衣", level: 2 }
+    ],
+    level3: [
+        { name: "Hvk 快拆防弹衣", level: 3 },
+        { name: "TG‑H 防弹衣", level: 3 }
+    ],
+    level4: [
+        { name: "武士防弹背心", level: 4 },
+        { name: "DT‑AVS 防弹衣", level: 4 },
+        { name: "MK‑2 战术背心", level: 4 }
+    ],
+    level5: [
+        { name: "精英防弹衣", level: 5 },
+        { name: "Hvk‑2 防弹衣", level: 5 },
+        { name: "FS 复合防弹衣", level: 5 }
+    ],
+    level6: [
+        { name: "金刚防弹衣", level: 6 },
+        { name: "泰坦防弹装甲", level: 6 },
+        { name: "特里克 MAS2.0", level: 6 }
+    ]
+};
+
+// ===================== 工具函数 =====================
+// 随机选择不重复的元素
+function getRandomUniqueItems(arr, n) {
+    const shuffled = [...arr].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, n);
+}
+
+function getAllWeaponsByMode(mode){
+    if(mode === "secret"){
+        return [...weapons.level1, ...weapons.level2, ...weapons.level3];
+    }else{
+        return [...weapons.level1, ...weapons.level2, ...weapons.level3, ...weapons.level4];
+    }
+}
+
+function getWeaponsByProbability(mode, weaponType, prob){
+    const all = getAllWeaponsByMode(mode);
+    const target = all.filter(w=>w.type === weaponType);
+    const other = all.filter(w=>w.type !== weaponType);
+    return Math.random()*100 < prob ? (target.length?target:all) : (other.length?other:all);
+}
+
+// 10% 出6级，90% 出其他等级
+function getGearWithLevel6Rate(level6Pool, otherPool) {
+    if (Math.random() < 0.1) {
+        return level6Pool;
+    } else {
+        return otherPool;
+    }
+}
+
+function getHelmetsByMode(mode){
+    const all6 = helmets.level6 || [];
+    const other = [
+        ...(helmets.level1 || []),
+        ...(helmets.level2 || []),
+        ...(helmets.level3 || []),
+        ...(helmets.level4 || []),
+        ...(helmets.level5 || [])
+    ];
+    return getGearWithLevel6Rate(all6, other);
+}
+
+function getArmorsByMode(mode){
+    const all6 = armors.level6 || [];
+    const other = [
+        ...(armors.level1 || []),
+        ...(armors.level2 || []),
+        ...(armors.level3 || []),
+        ...(armors.level4 || []),
+        ...(armors.level5 || [])
+    ];
+    return getGearWithLevel6Rate(all6, other);
+}
+
+// 显示提示弹窗
+function showToast(message, duration = 2000) {
+    const toast = document.getElementById("toast");
+    toast.textContent = message;
+    toast.classList.add("show");
+    setTimeout(() => {
+        toast.classList.remove("show");
+    }, duration);
+}
+
+// 更新当前模式提示
+function updateModeIndicator() {
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    const modeText = mode === "secret" ? "机密模式" : "绝密模式";
+    document.getElementById("modeIndicator").textContent = `当前模式：${modeText}`;
+}
+
+// 设置按钮状态
+function setButtonState(btnId, disabled) {
+    const btn = document.getElementById(btnId);
+    if(disabled) {
+        btn.disabled = true;
+        btn.classList.add("btn-disabled");
+    } else {
+        btn.disabled = false;
+        btn.classList.remove("btn-disabled");
+    }
+}
+
+// 显示加载动画
+function showLoading(spinnerId, show) {
+    const spinner = document.getElementById(spinnerId);
+    if(show) {
+        spinner.classList.add("show");
+    } else {
+        spinner.classList.remove("show");
+    }
+}
+
+// ===================== 指挥官相关函数 =====================
+// 切换指挥官按钮显示/隐藏
+function toggleCommanderBtn() {
+    const count = parseInt(document.getElementById("operatorCount").value);
+
+    if(count >= 2 && !isFirstGenerate){
+        document.getElementById("commanderBtn").style.display = "flex";
+        setButtonState("commanderBtn", false);
+    }else{
+        document.getElementById("commanderBtn").style.display = "none";
+        setButtonState("commanderBtn", true);
+    }
+}
+
+// 随机选择指挥官
+function randomCommander() {
+    if(currentOperators.length === 0) {
+        showToast("请先随机生成干员！");
+        return;
+    }
+
+    // 添加按钮点击动画
+    const commanderBtn = document.getElementById("commanderBtn");
+    commanderBtn.classList.add("click-animate");
+    setTimeout(() => {
+        commanderBtn.classList.remove("click-animate");
+    }, 500);
+
+    // 从当前生成的干员中随机选一位
+    currentCommander = currentOperators[Math.floor(Math.random() * currentOperators.length)];
+
+    // 更新提示
+    const commanderTip = document.getElementById("commanderTip");
+    commanderTip.textContent = `当前指挥官：${currentCommander.name} (${currentCommander.role})`;
+    commanderTip.classList.add("show");
+
+    // 高亮显示指挥官
+    highlightCommander();
+}
+
+// 高亮显示指挥官
+function highlightCommander() {
+    // 先清除所有高亮
+    document.querySelectorAll(".box-content").forEach(el => {
+        el.classList.remove("commander");
+    });
+    // 清除所有指挥官卡片边框
+    document.querySelectorAll(".result-box").forEach(box => {
+        box.classList.remove("commander-box");
+    });
+
+    if(!currentCommander) return;
+
+    // 找到对应干员并高亮（触发动画）
+    for(let i=0; i<currentOperators.length; i++){
+        if(currentOperators[i].name === currentCommander.name){
+            const opEl = document.getElementById(`op${i+1}`);
+            opEl.classList.add("commander");
+            // 给指挥官卡片加边框
+            document.getElementById(`boxOp${i+1}`).classList.add("commander-box");
+            break;
+        }
+    }
+}
+
+// ===================== 核心生成函数 =====================
+function generate(){
+    // 显示加载动画
+    showLoading("generateSpinner", true);
+
+    // 禁用按钮
+    setButtonState("generateBtn", true);
+
+    setTimeout(() => {
+        // 首次生成时显示结果容器
+        if(isFirstGenerate){
+            document.getElementById("resultContainer").classList.add("show");
+            isFirstGenerate = false;
         }
 
-        // ===================== 核心功能 =====================
-        // 房主：生成随机数
-        async function generateRandomNumber() {
-            try {
-                // 生成1-100随机数
-                const randomNum = Math.floor(Math.random() * 100) + 1;
+        // 获取配置参数
+        const count = parseInt(document.getElementById("operatorCount").value);
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        const weaponType = document.getElementById("weaponType").value;
+        const prob = parseInt(document.getElementById("weaponProb").value) || 100;
 
-                // 1. 清空旧数据
-                const oldDataRes = await randomNumCollection.get();
-                if (oldDataRes.data.length > 0) {
-                    for (const doc of oldDataRes.data) {
-                        await randomNumCollection.doc(doc._id).remove();
-                    }
-                }
-
-                // 2. 写入新随机数
-                await randomNumCollection.add({
-                    number: randomNum,
-                    updateTime: new Date().toLocaleString(),
-                    type: "generate"
-                });
-
-                // 更新前端显示
-                document.getElementById("random-number").textContent = randomNum;
-                showToast(`生成成功：${randomNum}`);
-                document.getElementById("status").textContent = "已同步最新随机数";
-            } catch (error) {
-                showToast(`生成失败：${error.message}`);
-                console.error("生成失败：", error);
-            }
+        // 重置动画和显示状态
+        const boxes = document.querySelectorAll('.result-box');
+        boxes.forEach(b=>{
+            b.classList.remove('animate');
+            b.classList.remove('commander-box');
+        });
+        // 控制行数显示/隐藏
+        document.getElementById("row1").classList.remove('hidden');
+        document.getElementById("row2").classList.remove('hidden');
+        document.getElementById("row3").classList.remove('hidden');
+        if(count === 1){
+            document.getElementById("row2").classList.add('hidden');
+            document.getElementById("row3").classList.add('hidden');
+        }else if(count === 2){
+            document.getElementById("row3").classList.add('hidden');
         }
 
-        // 房主：重置随机数
-        async function resetRandomNumber() {
-            try {
-                // 清空所有数据
-                const oldDataRes = await randomNumCollection.get();
-                if (oldDataRes.data.length > 0) {
-                    for (const doc of oldDataRes.data) {
-                        await randomNumCollection.doc(doc._id).remove();
-                    }
-                }
+        // 随机生成对应数量的配装（保证干员不重复）
+        currentOperators = getRandomUniqueItems(operators, count);
+        const wepPool = weaponType === "all" ? getAllWeaponsByMode(mode) : getWeaponsByProbability(mode, weaponType, prob);
+        const weps = getRandomUniqueItems(wepPool, count);
+        const helms = getRandomUniqueItems(getHelmetsByMode(mode), count);
+        const arms = getRandomUniqueItems(getArmorsByMode(mode), count);
 
-                // 写入重置标记
-                await randomNumCollection.add({
-                    number: "--",
-                    updateTime: new Date().toLocaleString(),
-                    type: "reset"
-                });
-
-                document.getElementById("random-number").textContent = "--";
-                showToast("已重置");
-                document.getElementById("status").textContent = "已重置，等待生成...";
-            } catch (error) {
-                showToast(`重置失败：${error.message}`);
-                console.error("重置失败：", error);
-            }
+        // 渲染数据（武器不显示等级，头盔护甲显示等级）
+        for(let i=0;i<count;i++){
+            // 干员
+            document.getElementById(`op${i+1}`).textContent = `${currentOperators[i].name} (${currentOperators[i].role})`;
+            // 武器：只显示名字，不显示等级
+            document.getElementById(`wp${i+1}`).textContent = weps[i].name;
+            // 头盔
+            document.getElementById(`hl${i+1}`).innerHTML = `${helms[i].name} <span class="level-tag">${helms[i].level}级</span>`;
+            // 护甲
+            document.getElementById(`ar${i+1}`).innerHTML = `${arms[i].name} <span class="level-tag">${arms[i].level}级</span>`;
         }
 
-        // 轮询获取最新随机数
-        async function pollLatestNumber() {
-            try {
-                // 查询最新一条数据（按时间倒序）
-                const res = await randomNumCollection.orderBy('updateTime', 'desc').limit(1).get();
-                if (res.data.length > 0) {
-                    const latestData = res.data[0];
-                    document.getElementById("random-number").textContent = latestData.number;
-                    document.getElementById("status").textContent = `最后更新：${latestData.updateTime}`;
-                }
-            } catch (error) {
-                console.error("轮询失败：", error);
-            }
+        // 触发动画（仅渐入，无抖动）
+        setTimeout(()=>{
+            const visibleBoxes = document.querySelectorAll('.result-row:not(.hidden) .result-box');
+            visibleBoxes.forEach((b,i)=>{
+                setTimeout(()=>{
+                    b.classList.add('animate');
+                },i*80);
+            });
+        },100);
+
+        // 切换指挥官按钮显示状态
+        toggleCommanderBtn();
+
+        // 如果已有指挥官，重新高亮
+        if(currentCommander){
+            highlightCommander();
         }
 
-        // ===================== 页面初始化 =====================
-        window.onload = async function() {
-            // ========== 第一步：优先判断房主权限（不受登录影响） ==========
-            const urlParams = new URLSearchParams(window.location.search);
-            const isHost = urlParams.get("host") === "1";
+        // 隐藏加载动画
+        showLoading("generateSpinner", false);
+        // 启用按钮
+        setButtonState("generateBtn", false);
 
-            // 调试：打印权限判断结果
-            console.log("是否为房主：", isHost);
-            console.log("URL参数：", urlParams.toString());
+    }, 800); // 模拟加载延迟，提升体验
+}
 
-            // 显示/隐藏房主按钮（无论登录是否成功，先判断权限）
-            if (isHost) {
-                document.getElementById("host-buttons").style.display = "block";
-                document.getElementById("status").textContent = "你是房主，可生成随机数";
-            }
+// 重置功能
+function resetAll() {
+    // 重置全局变量
+    currentOperators = [];
+    currentCommander = null;
+    isFirstGenerate = true;
 
-            // ========== 第二步：初始化云开发登录 ==========
-            try {
-                await app.auth().anonymousAuthProvider().signIn();
-                showToast(isHost ? "房主初始化成功" : "初始化成功");
-            } catch (error) {
-                showToast(`初始化失败：${error.message}`);
-                console.error("登录失败：", error);
-                // 即使登录失败，房主按钮依然显示（仅影响数据库操作）
-                if (isHost) {
-                    document.getElementById("status").textContent = "你是房主，但初始化失败，无法操作";
-                }
-            }
+    // 隐藏结果容器
+    document.getElementById("resultContainer").classList.remove("show");
 
-            // ========== 第三步：启动轮询 ==========
-            pollLatestNumber();
-            setInterval(pollLatestNumber, 2000);
-        };
-    </script>
+    // 重置指挥官提示
+    const commanderTip = document.getElementById("commanderTip");
+    commanderTip.classList.remove("show");
+    commanderTip.textContent = "当前指挥官：红狼 (突击手)";
+
+    // 重置按钮状态
+    setButtonState("generateBtn", false);
+    setButtonState("commanderBtn", true);
+    document.getElementById("commanderBtn").style.display = "none";
+
+    // 清除所有高亮
+    document.querySelectorAll(".box-content").forEach(el => {
+        el.classList.remove("commander");
+    });
+    document.querySelectorAll(".result-box").forEach(box => {
+        box.classList.remove("commander-box");
+        box.classList.remove("animate");
+    });
+
+    // 重置配置（可选：恢复默认配置）
+    document.getElementById("operatorCount").value = 3;
+    document.getElementById("weaponType").value = "all";
+    document.getElementById("weaponProb").value = 100;
+    // 保持默认绝密模式
+    document.querySelector('input[name="mode"][value="top_secret"]').checked = true;
+    document.querySelectorAll('.radio-group label').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll('.radio-group label')[1].classList.add('active');
+    updateModeIndicator();
+
+    showToast("已重置所有配置！");
+}
+
+// ===================== 事件绑定 =====================
+// 生成按钮点击
+document.getElementById('generateBtn').addEventListener('click', generate);
+
+// 随机指挥官按钮点击
+document.getElementById('commanderBtn').addEventListener('click', randomCommander);
+
+// 重置按钮点击
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+// 模式选择样式切换
+document.querySelectorAll('.radio-group label').forEach(lb=>{
+    lb.addEventListener('click',()=>{
+        document.querySelectorAll('.radio-group label').forEach(l=>l.classList.remove('active'));
+        lb.classList.add('active');
+        updateModeIndicator();
+    });
+});
+
+// 概率输入限制
+document.getElementById('weaponProb').addEventListener('input',function(){
+    if(this.value<0)this.value=0;
+    if(this.value>100)this.value=100;
+});
+
+// 人数选择变化时重新生成
+document.getElementById('operatorCount').addEventListener('change', function() {
+    currentCommander = null;
+    // 隐藏指挥官提示
+    document.getElementById("commanderTip").classList.remove("show");
+    // 只有非首次生成时才重新生成
+    if(!isFirstGenerate){
+        generate();
+    } else {
+        toggleCommanderBtn();
+    }
+});
+
+// 初始化
+updateModeIndicator();
+</script>
 </body>
 </html>
